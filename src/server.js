@@ -298,9 +298,16 @@ app.use(cors({
 // Serve only SCORM packages
 app.use('/scorm-packages', express.static('scorm-packages'));
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Make Supabase optional, only initialize if environment variables are present
+let supabase = null;
+if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+  supabase = createClient(supabaseUrl, supabaseAnonKey);
+  console.log('Supabase initialized successfully');
+} else {
+  console.log('Supabase environment variables not found, using in-memory storage only');
+}
 
 // API endpoint to handle SCORM progress
 app.post('/api/progress', (req, res) => {
