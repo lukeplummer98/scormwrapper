@@ -226,25 +226,84 @@ const launcherContent = `<!DOCTYPE html>
             console.log('✅ SCORM content iframe loaded successfully');
         }
         
-        // Initialize the SCORM content
+        // Initialize the SCORM content with better error handling and fixed loading
         (async function() {
             try {
+                console.log('Searching for SCORM entry point...');
+                // Directly try common entry files first without relying on fetch HEAD
+                const directTryFiles = ['index.html', 'story.html', 'index_lms.html', 'launch.html'];
+                
+                // Try the most common files first directly
+                for (const file of directTryFiles) {
+                    if (fileExists(file)) {
+                        loadContent(file);
+                        return;
+                    }
+                }
+                
+                // If direct tries fail, use the more comprehensive approach
                 const entryPoint = await findScormEntry();
                 if (entryPoint) {
-                    console.log('Loading SCORM content from:', entryPoint);
-                    const iframe = document.getElementById('scorm-container');
-                    iframe.onload = hideLoader;
-                    iframe.src = entryPoint;
+                    loadContent(entryPoint);
                 } else {
-                    document.getElementById('loading').style.display = 'none';
-                    document.body.innerHTML = '<h2>Error: Could not find SCORM content entry point</h2>';
+                    // Final fallback - just try index.html directly
+                    loadContent('index.html');
                 }
             } catch (error) {
                 document.getElementById('loading').style.display = 'none';
                 console.error('Error initializing SCORM content:', error);
                 document.body.innerHTML = '<h2>Error loading SCORM content</h2><p>' + error.message + '</p>';
+                
+                // Alert parent frame of the error for better debugging
+                try {
+                    if (window.parent && window.parent !== window) {
+                        window.parent.postMessage({
+                            type: 'SCORM_ERROR',
+                            error: error.message
+                        }, '*');
+                    }
+                } catch (e) {}
             }
         })();
+        
+        // Helper function to check if a file exists (more reliable in some browsers)
+        function fileExists(file) {
+            const img = new Image();
+            try {
+                img.src = file + '?check=' + new Date().getTime();
+                return img.height !== 0;
+            } catch (e) {
+                return false;
+            }
+        }
+        
+        // Helper function to load content with proper error handling
+        function loadContent(src) {
+            console.log('Loading SCORM content from:', src);
+            const iframe = document.getElementById('scorm-container');
+            iframe.onload = function() {
+                hideLoader();
+                console.log('SCORM content loaded successfully:', src);
+                
+                // Alert parent frame that content is ready
+                try {
+                    if (window.parent && window.parent !== window) {
+                        window.parent.postMessage({
+                            type: 'SCORM_LOADED',
+                            src: src
+                        }, '*');
+                    }
+                } catch (e) {}
+            };
+            
+            iframe.onerror = function(error) {
+                document.getElementById('loading').style.display = 'none';
+                console.error('Error loading iframe content:', error);
+                document.body.innerHTML = '<h2>Error loading SCORM content</h2><p>Could not load: ' + src + '</p>';
+            };
+            
+            iframe.src = src;
+        }
     </script>
 </body>
 </html>`;
@@ -287,16 +346,28 @@ app.use((req, res, next) => {
   next();
 });
 
-// CORS
+// CORS configuration with expanded settings
 app.use(cors({
-  origin: '*', // Change to your frontend domain in production
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Accept'],
+  origin: '*', // In production, you should restrict this to your frontend domain
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Length', 'Content-Type'],
+  maxAge: 86400, // 24 hours
   credentials: false
 }));
 
-// Serve only SCORM packages
-app.use('/scorm-packages', express.static('scorm-packages'));
+// Serve SCORM packages with enhanced options
+app.use('/scorm-packages', express.static('scorm-packages', {
+  etag: true,
+  lastModified: true,
+  maxAge: '1h',
+  setHeaders: (res, path) => {
+    // Ensure content is not cached incorrectly
+    if (path.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  }
+}));
 
 // Make Supabase optional, only initialize if environment variables are present
 let supabase = null;
@@ -494,6 +565,17 @@ app.get('/api/courses/:courseId/exists', (req, res) => {
   }
 });
 
+// Add a health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    memoryUsage: process.memoryUsage(),
+    uptime: process.uptime()
+  });
+});
+
 // Add a simple home page at the root URL
 app.get('/', (req, res) => {
   // Get list of available courses
@@ -552,6 +634,40 @@ app.get('/', (req, res) => {
   `);
 });
 
+// Debug middleware to log all requests
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} | ${req.method} ${req.url}`);
+  next();
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Server error:', err);
+  res.status(500).json({
+    error: 'Internal server error',
+    message: err.message
+  });
+});
+
+// Start the server
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
+    console.log(`SCORM API available at http://localhost:${port}/scorm-packages/`);
+    
+    // Log available courses 
+    try {
+      if (fs.existsSync('scorm-packages')) {
+        const courses = fs.readdirSync('scorm-packages')
+          .filter(dir => fs.existsSync(path.join('scorm-packages', dir)) && 
+                        fs.statSync(path.join('scorm-packages', dir)).isDirectory());
+        
+        if (courses.length > 0) {
+          console.log('Available courses:', courses);
+        } else {
+          console.log('No courses available');
+        }
+      }
+    } catch (error) {
+      console.error('Error listing courses:', error);
+    }
 });
