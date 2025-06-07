@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>SCORM Test Launcher</title>
+    <script>
+      // Place the API on the parent (this window), so the iframe can find it
+      window.API = {
+        LMSInitialize: function() { 
+          console.log('LMSInitialize called');
+          return "true"; 
+        },
+        LMSFinish: function() { 
+          console.log('LMSFinish called');
+          return "true"; 
+        },
+        LMSSetValue: function(key, value) {
+          window.scormData = window.scormData || {};
+          window.scormData[key] = value;
+          console.log('LMSSetValue called:', key, value);
+          fetch('/api/progress', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: 'test-user', courseId: 'test', progressData: { [key]: value } })
+          })
+          .then(res => res.json())
+          .then(data => {
+            console.log('Progress POST response:', data);
+          })
+          .catch(err => {
+            console.error('Progress POST error:', err);
+            alert('Progress POST error: ' + err);
+          });
+          return "true";
+        },
+        LMSGetValue: function(key) {
+          window.scormData = window.scormData || {};
+          console.log('LMSGetValue called:', key, window.scormData[key]);
+          return window.scormData[key] || "";
+        },
+        LMSCommit: function() { 
+          console.log('LMSCommit called');
+          return "true"; 
+        },
+        LMSGetLastError: function() { return "0"; },
+        LMSGetErrorString: function() { return ""; },
+        LMSGetDiagnostic: function() { return ""; }
+      };
+
+      // Add this in your React component that fetches progress
+      console.log("React is fetching progress for:", userId, courseId);
+    </script>
+  </head>
+  <body style="margin:0;padding:0;">
+    <iframe src="index_lms.html" width="100%" height="800" style="border:none;"></iframe>
+  </body>
+</html>

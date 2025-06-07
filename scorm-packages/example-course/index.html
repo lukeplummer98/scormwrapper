@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCORM Example Course</title>
+    <script>
+        function init() {
+            // Initialize SCORM
+            if (window.API) {
+                window.API.LMSInitialize('');
+            }
+        }
+
+        function setValue() {
+            // Set a value in SCORM
+            if (window.API) {
+                window.API.LMSSetValue('cmi.core.lesson_status', 'completed');
+                window.API.LMSCommit('');
+            }
+        }
+
+        window.onload = init;
+    </script>
+</head>
+<body>
+    <h1>Welcome to the SCORM Example Course</h1>
+    <button onclick="setValue()">Complete Lesson</button>
+</body>
+</html>

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>SCORM Launcher</title>
+    <script>
+      // Place the API on the parent (this window), so the iframe can find it
+      window.API = {
+        LMSInitialize: function() { return "true"; },
+        LMSFinish: function() { return "true"; },
+        LMSSetValue: function(key, value) {
+          window.scormData = window.scormData || {};
+          window.scormData[key] = value;
+          fetch('/api/progress', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: 'demo-user', courseId: 'halfords', progressData: { [key]: value } })
+          });
+          return "true";
+        },
+        LMSGetValue: function(key) {
+          window.scormData = window.scormData || {};
+          return window.scormData[key] || "";
+        },
+        LMSCommit: function() { return "true"; },
+        LMSGetLastError: function() { return "0"; },
+        LMSGetErrorString: function() { return ""; },
+        LMSGetDiagnostic: function() { return ""; }
+      };
+    </script>
+  </head>
+  <body style="margin:0;padding:0;height:100vh;width:100vw;">
+    <iframe src="index_lms.html" width="100%" height="100%" style="border:none;"></iframe>
+  </body>
+</html>
